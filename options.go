@@ -18,7 +18,6 @@ type Config struct {
 	MetaFactory     metastorage.Factory     // Meta storage factory
 	DataMiddlewares []middleware.Middleware // Middleware for data storage
 	MetaMiddlewares []middleware.Middleware // Middleware for metadata storage
-	Handlers        map[string]Handler
 	StateHandlers   map[QueueState][]Handler // Handlers per queue state
 	RetryPolicy     RetryPolicy
 	MaxAttempts     int
@@ -49,7 +48,6 @@ func defaultConfig() *Config {
 		ProcessInterval: 30 * time.Second,
 		MaxConcurrency:  10,
 		DefaultPriority: 5,
-		Handlers:        make(map[string]Handler),
 		StateHandlers:   make(map[QueueState][]Handler),
 
 		// Postfix-like defaults
@@ -98,22 +96,6 @@ func WithMetaStorage(factory metastorage.Factory, middlewares ...middleware.Midd
 	}
 }
 
-// WithHandler registers a message handler
-func WithHandler(name string, handler Handler) Option {
-	return func(c *Config) error {
-		if name == "" {
-			return fmt.Errorf("handler name cannot be empty")
-		}
-		if handler == nil {
-			return fmt.Errorf("handler cannot be nil")
-		}
-		if _, exists := c.Handlers[name]; exists {
-			return fmt.Errorf("handler with name %q already exists", name)
-		}
-		c.Handlers[name] = handler
-		return nil
-	}
-}
 
 // WithActiveHandler registers a handler for active message delivery
 func WithActiveHandler(handler Handler) Option {

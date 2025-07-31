@@ -293,11 +293,11 @@ func TestQueue_HandlerRegistration(t *testing.T) {
 
 	handler := &testHandler{name: "register-handler"}
 
-	// Test retryspool.WithHandler (0% coverage)
+	// Test retryspool.WithActiveHandler (0% coverage)
 	queue := retryspool.New(
 		retryspool.WithDataStorage(dataFactory),
 		retryspool.WithMetaStorage(metaFactory),
-		retryspool.WithHandler("active", handler),
+		retryspool.WithActiveHandler(handler),
 	)
 	defer queue.Close()
 
