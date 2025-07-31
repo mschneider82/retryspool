@@ -1,2 +1,12 @@
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+schneider.vip/retryspool/middleware v0.0.2 h1:jJk+HaskpUKp3ZquzeqKTYdD9ufmfnCQ3dva5GW15EY=
+schneider.vip/retryspool/middleware v0.0.2/go.mod h1:lI68OHGUOilvn7rY2kK6gvRzL1KjXCdRxK7NAPA+pCw=
+schneider.vip/retryspool/storage/data v0.0.2 h1:+fIua47xbpMzOvHsFR4vvHXVaU/43xsPKMNMuIR7Zh0=
+schneider.vip/retryspool/storage/data v0.0.2/go.mod h1:vav/CfpCM6nxcuRy+SFp9wU26jAHi5Z/r1sBCgO/cZA=
+schneider.vip/retryspool/storage/data/filesystem v0.0.3 h1:ctKiEGTHQI28M4kRgh81dM0M2hk7OpUQc8NwCWzpAfQ=
+schneider.vip/retryspool/storage/data/filesystem v0.0.3/go.mod h1:jdrzi9SJEu0+E76VewT6OTr4KVp9Am2I4JidvQwI1RU=
+schneider.vip/retryspool/storage/meta v0.0.2 h1:dWev+erz1KB4Z+LgwctyrmLPfkaSPok21+lXVYHUo9w=
+schneider.vip/retryspool/storage/meta v0.0.2/go.mod h1:SZ4F8XBG+XI+AXlBbWMTchl4WudA0T0H85BpteAEpEY=
+schneider.vip/retryspool/storage/meta/filesystem v0.0.2 h1:3vFcnKlngOywGCwtrcnX2X/qKw8bO75X6bk0Dq9RtMA=
+schneider.vip/retryspool/storage/meta/filesystem v0.0.2/go.mod h1:18x5+j/CeVikVyaQmWf7SRDMhkPzFbWAz67yUVln1hY=
