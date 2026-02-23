@@ -2,6 +2,7 @@ package retryspool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -335,8 +336,13 @@ func (s *messageScheduler) scheduleReadyDeferred(ctx context.Context, maxCount i
 		// Atomically move message to active state before scheduling
 		err = s.queueRef.MoveToState(ctx, metadata.ID, StateDeferred, StateActive)
 		if err != nil {
-			s.logger.Error("Failed to move deferred message to active", "message_id", metadata.ID, "error", err)
-			continue // Skip this message, another worker might have taken it
+			if errors.Is(err, metastorage.ErrStateConflict) {
+				// Expected: another worker already claimed the message
+				s.logger.Debug("Deferred message already claimed by another worker", "message_id", metadata.ID)
+			} else {
+				s.logger.Error("Failed to move deferred message to active", "message_id", metadata.ID, "error", err)
+			}
+			continue // Skip this message
 		}
 
 		// Schedule work item (message is already in active state)
@@ -438,13 +444,18 @@ func (s *messageScheduler) scheduleIncoming(ctx context.Context, maxCount int) i
 		// This is a critical section - we need to ensure only one worker processes this message
 		err = s.queueRef.MoveToState(ctx, metadata.ID, StateIncoming, StateActive)
 		if err != nil {
-			// This is expected when multiple workers try to process the same message
-			// The first worker wins, others should skip this message
-			if s.logger != nil {
-				s.logger.Debug("Message already moved by another worker", "message_id", metadata.ID, "error", err)
+			if errors.Is(err, metastorage.ErrStateConflict) {
+				// Expected: another worker already claimed the message
+				if s.logger != nil {
+					s.logger.Debug("Incoming message already claimed by another worker", "message_id", metadata.ID)
+				}
+			} else {
+				if s.logger != nil {
+					s.logger.Error("Failed to move incoming message to active", "message_id", metadata.ID, "error", err)
+				}
 			}
 			// Don't increment scheduled count for failed moves
-			continue // Skip this message, another worker might have taken it
+			continue // Skip this message
 		}
 
 		// Schedule work item (message is already in active state)
@@ -547,8 +558,13 @@ func (s *messageScheduler) scheduleBounce(ctx context.Context, maxCount int) int
 		// Atomically move message to active state before scheduling
 		err = s.queueRef.MoveToState(ctx, metadata.ID, StateBounce, StateActive)
 		if err != nil {
-			s.logger.Error("Failed to move bounce message to active", "message_id", metadata.ID, "error", err)
-			continue // Skip this message, another worker might have taken it
+			if errors.Is(err, metastorage.ErrStateConflict) {
+				// Expected: another worker already claimed the message
+				s.logger.Debug("Bounce message already claimed by another worker", "message_id", metadata.ID)
+			} else {
+				s.logger.Error("Failed to move bounce message to active", "message_id", metadata.ID, "error", err)
+			}
+			continue // Skip this message
 		}
 
 		// Schedule work item (message is already in active state)

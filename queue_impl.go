@@ -186,28 +186,18 @@ func (q *queueImpl) UpdateMessageMetadata(ctx context.Context, id string, metada
 	return nil
 }
 
-// MoveToState moves a message from one queue state to another atomically
+// MoveToState moves a message from one queue state to another atomically.
+// The storage layer guarantees CAS semantics — no read-check-write needed.
 func (q *queueImpl) MoveToState(ctx context.Context, id string, fromState, toState QueueState) error {
-	metadata, err := q.GetMessageMetadata(ctx, id)
+	err := q.storage.MoveToState(ctx, id, q.convertToMetaStorageState(fromState), q.convertToMetaStorageState(toState))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to move message %s from %s to %s: %w", id, fromState, toState, err)
 	}
 
-	// Atomic check: ensure message is in expected fromState
-	if metadata.State != fromState {
-		return fmt.Errorf("message %s is in state %s, expected %s", id, metadata.State, fromState)
-	}
-
-	oldState := metadata.State
-	metadata.State = toState
-	metadata.Updated = time.Now()
-
-	err = q.UpdateMessageMetadata(ctx, id, metadata)
-	if err != nil {
-		return err
-	}
-
-	q.config.Logger.Info("Message moved", "message_id", id, "from_state", oldState, "to_state", toState)
+	q.config.Logger.Info("Message moved",
+		"message_id", id,
+		"from_state", fromState,
+		"to_state", toState)
 	return nil
 }
 
