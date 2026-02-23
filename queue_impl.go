@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,7 +23,7 @@ type queueImpl struct {
 	scheduler *messageScheduler // Centralized scheduler
 
 	// Runtime state
-	running bool
+	running atomic.Bool
 	stopCh  chan struct{}
 	mu      sync.RWMutex
 }
@@ -139,7 +140,7 @@ func (q *queueImpl) Enqueue(ctx context.Context, headers map[string]string, data
 	q.config.Logger.Info("Message enqueued", "message_id", id, "state", metadata.State)
 
 	// Trigger immediate scheduling (unless disabled)
-	if q.scheduler != nil && q.running && !q.config.DisableImmediateTrigger {
+	if q.scheduler != nil && q.running.Load() && !q.config.DisableImmediateTrigger {
 		q.scheduler.TriggerImmediate()
 	}
 
@@ -349,7 +350,7 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 				return
 			}
 
-			// Update message state
+			// Update message state (already moved to active in scheduler)
 			message.Metadata.State = StateActive
 		}
 
@@ -473,22 +474,21 @@ func (q *queueImpl) Start(ctx context.Context) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if q.running {
+	if q.running.Swap(true) {
 		return fmt.Errorf("queue is already running")
 	}
 
 	// Run recovery first
 	err := q.Recover(ctx)
 	if err != nil {
+		q.running.Store(false)
 		return fmt.Errorf("failed to recover queue: %w", err)
 	}
-
-	q.running = true
 
 	// Start the centralized scheduler
 	err = q.scheduler.Start(ctx)
 	if err != nil {
-		q.running = false
+		q.running.Store(false)
 		return fmt.Errorf("failed to start scheduler: %w", err)
 	}
 
@@ -498,12 +498,12 @@ func (q *queueImpl) Start(ctx context.Context) error {
 
 // Stop stops the queue processing
 func (q *queueImpl) Stop(ctx context.Context) error {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	if !q.running {
+	if !q.running.Swap(false) {
 		return nil
 	}
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
 
 	// Stop the centralized scheduler
 	err := q.scheduler.Stop(ctx)
@@ -512,7 +512,6 @@ func (q *queueImpl) Stop(ctx context.Context) error {
 	}
 
 	close(q.stopCh)
-	q.running = false
 
 	q.config.Logger.Info("Queue stopped")
 	return nil
@@ -587,7 +586,7 @@ func (q *queueImpl) isRetryableError(err error) bool {
 	}
 
 	// Check if handler implements RetryableHandler interface
-	if retryableHandler, ok := interface{}(err).(interface{ IsRetryable(error) bool }); ok {
+	if retryableHandler, ok := err.(interface{ IsRetryable(error) bool }); ok {
 		return retryableHandler.IsRetryable(err)
 	}
 

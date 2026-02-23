@@ -24,26 +24,26 @@ func DefaultExponentialRetryPolicy() *ExponentialRetryPolicy {
 	return NewExponentialRetryPolicy(5*24*time.Hour, 15*time.Minute)
 }
 
+var defaultExponentialIntervals = []time.Duration{
+	15 * time.Minute,
+	30 * time.Minute,
+	1 * time.Hour,
+	2 * time.Hour,
+	4 * time.Hour,
+	8 * time.Hour,
+	16 * time.Hour,
+	24 * time.Hour,
+	24 * time.Hour,
+	24 * time.Hour,
+}
+
 // NextRetry calculates the next retry time using exponential backoff
 func (p *ExponentialRetryPolicy) NextRetry(attempts int, lastError error) time.Time {
 	// Exponential backoff intervals similar to Postfix:
 	// 15min, 30min, 1h, 2h, 4h, 8h, 16h, 24h, 24h, 24h
-	intervals := []time.Duration{
-		15 * time.Minute,
-		30 * time.Minute,
-		1 * time.Hour,
-		2 * time.Hour,
-		4 * time.Hour,
-		8 * time.Hour,
-		16 * time.Hour,
-		24 * time.Hour,
-		24 * time.Hour,
-		24 * time.Hour,
-	}
-
 	interval := 24 * time.Hour // Default to 24 hours for attempts beyond the array
-	if attempts < len(intervals) {
-		interval = intervals[attempts]
+	if attempts < len(defaultExponentialIntervals) {
+		interval = defaultExponentialIntervals[attempts]
 	}
 
 	// Ensure minimum interval

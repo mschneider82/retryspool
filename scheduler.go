@@ -110,33 +110,25 @@ func (s *messageScheduler) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop stops the scheduler and all workers
 func (s *messageScheduler) Stop(ctx context.Context) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if !s.running {
+		s.mu.Unlock()
 		return nil
 	}
 
 	s.logger.Info("Stopping message scheduler")
 	s.running = false // Set this first to prevent new operations
+	s.mu.Unlock()
 
 	// Close stop channel to signal shutdown
 	close(s.stopCh)
 
-	// Close work queue to signal workers (with defer to avoid double close)
-	defer func() {
-		// Safe close of work queue
-		select {
-		case <-s.workQueue:
-		default:
-			close(s.workQueue)
-		}
-	}()
-
 	// Wait for workers to finish
 	s.workers.Wait()
+
+	// Close work queue after all workers have finished
+	close(s.workQueue)
 
 	s.logger.Info("Message scheduler stopped",
 		"processed_messages", atomic.LoadInt64(&s.processedCount))
@@ -145,6 +137,14 @@ func (s *messageScheduler) Stop(ctx context.Context) error {
 
 // TriggerImmediate triggers immediate scheduling (called when new messages arrive)
 func (s *messageScheduler) TriggerImmediate() {
+	s.mu.RLock()
+	running := s.running
+	s.mu.RUnlock()
+
+	if !running {
+		return
+	}
+
 	// Set atomic flag that a rescan is needed
 	atomic.StoreInt32(&s.needsRescan, 1)
 
