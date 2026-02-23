@@ -8,5 +8,5 @@ require (
 	schneider.vip/retryspool/storage/data v0.0.2
 	schneider.vip/retryspool/storage/data/filesystem v0.0.4
 	schneider.vip/retryspool/storage/meta v0.0.3
-	schneider.vip/retryspool/storage/meta/filesystem v0.0.2
+	schneider.vip/retryspool/storage/meta/filesystem v0.0.3
 )
