@@ -130,6 +130,12 @@ RetrySpool separates message data and metadata storage, allowing for optimal bac
 - Distributed storage with replication
 - Suitable for multi-node deployments
 
+#### S3 Compatible
+**Module Path:** `schneider.vip/retryspool/storage/data/s3`
+- Uses S3-compatible object storage (AWS S3, MinIO, etc.)
+- Highly scalable and durable storage for large payloads
+- Supports multi-part uploads for efficient streaming
+
 #### PostgreSQL
 **Module Path:** `schneider.vip/retryspool/storage/data/postgres`
 - Stores message data in PostgreSQL BYTEA columns
@@ -271,6 +277,7 @@ import (
     datafs "schneider.vip/retryspool/storage/data/filesystem"
     datanats "schneider.vip/retryspool/storage/data/nats"
     datapostgres "schneider.vip/retryspool/storage/data/postgres"
+    datas3 "schneider.vip/retryspool/storage/data/s3"
     metafs "schneider.vip/retryspool/storage/meta/filesystem"
     metanats "schneider.vip/retryspool/storage/meta/nats"
     metapostgres "schneider.vip/retryspool/storage/meta/postgres"
@@ -341,11 +348,20 @@ func main() {
         retryspool.WithMetaStorage(metaSQLite),
     )
     
-    // Example 5: Queue with active and bounce handlers
+    // Example 5: S3 Data Storage with NATS Metadata
+    s3Factory := datas3.NewFactory("my-bucket").
+        WithBackendOptions(datas3.WithKeyPrefix("myapp/spool"))
+    
+    queue5 := retryspool.New(
+        retryspool.WithDataStorage(s3Factory),
+        retryspool.WithMetaStorage(metanats.NewFactory(metanats.WithBucket("meta"))),
+    )
+    
+    // Example 6: Queue with active and bounce handlers
     emailHandler := &EmailHandler{}
     webhookBounceHandler := &WebhookBounceHandler{}
     
-    queue5 := retryspool.New(
+    queue6 := retryspool.New(
         retryspool.WithDataStorage(datafs.NewFactory("./data")),
         retryspool.WithMetaStorage(metafs.NewFactory("./meta")),
         retryspool.WithActiveHandler(emailHandler),
@@ -356,10 +372,10 @@ func main() {
     
     // Start queue processing
     ctx := context.Background()
-    if err := queue5.Start(ctx); err != nil {
+    if err := queue6.Start(ctx); err != nil {
         log.Fatal(err)
     }
-    defer queue5.Close()
+    defer queue6.Close()
 }
 
 // EmailHandler processes active messages by sending emails
@@ -452,6 +468,10 @@ datafs.NewFactory(basePath string)
 // NATS JetStream Object Store
 datanats.NewFactory(opts ...datanats.Option)
 // Options: WithURL, WithBucket, WithConnection, WithMaxChunkSize, WithReplicas, etc.
+
+// S3 Compatible
+datas3.NewFactory(bucket string)
+// Options: WithClient, WithClientOptions, WithBackendOptions (Prefix, StorageClass)
 
 // PostgreSQL
 datapostgres.NewFactory(dsn string).
