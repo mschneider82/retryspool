@@ -35,6 +35,9 @@ type Queue interface {
 	// DeleteMessage removes a message from the queue
 	DeleteMessage(ctx context.Context, id string) error
 
+	// SetMessageRetryPolicy updates the retry policy for an existing message
+	SetMessageRetryPolicy(ctx context.Context, id string, policyName string) error
+
 	// Recover recovers queue state after restart (moves active messages back to incoming)
 	Recover(ctx context.Context) error
 
@@ -46,6 +49,21 @@ type Queue interface {
 
 	// Close closes the queue and releases resources
 	Close() error
+}
+
+type retryPolicyKey struct{}
+
+// ContextWithRetryPolicy returns a context with a named retry policy
+func ContextWithRetryPolicy(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, retryPolicyKey{}, name)
+}
+
+// RetryPolicyFromContext returns the named retry policy from the context
+func RetryPolicyFromContext(ctx context.Context) string {
+	if name, ok := ctx.Value(retryPolicyKey{}).(string); ok {
+		return name
+	}
+	return ""
 }
 
 // Handler processes messages

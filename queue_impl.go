@@ -103,15 +103,22 @@ func (q *queueImpl) Enqueue(ctx context.Context, headers map[string]string, data
 		headers = make(map[string]string)
 	}
 
+	// Resolve retry policy name from context or headers
+	policyName := RetryPolicyFromContext(ctx)
+	if policyName == "" {
+		policyName = headers["x-retry-policy"]
+	}
+
 	metadata := MessageMetadata{
-		State:       StateIncoming,
-		Attempts:    0,
-		MaxAttempts: q.config.MaxAttempts,
-		NextRetry:   time.Now(),
-		Created:     time.Now(),
-		Updated:     time.Now(),
-		Priority:    q.config.DefaultPriority,
-		Headers:     headers,
+		State:           StateIncoming,
+		Attempts:        0,
+		MaxAttempts:     q.config.MaxAttempts,
+		NextRetry:       time.Now(),
+		Created:         time.Now(),
+		Updated:         time.Now(),
+		Priority:        q.config.DefaultPriority,
+		Headers:         headers,
+		RetryPolicyName: policyName,
 	}
 
 	// Set priority from headers if specified
@@ -132,7 +139,7 @@ func (q *queueImpl) Enqueue(ctx context.Context, headers map[string]string, data
 	}
 
 	// Store message in storage
-	err := q.storage.StoreMessage(ctx, id, headers, data, q.config.MaxAttempts, q.config.DefaultPriority)
+	err := q.storage.StoreMessage(ctx, id, headers, data, q.config.MaxAttempts, q.config.DefaultPriority, policyName)
 	if err != nil {
 		return "", fmt.Errorf("failed to store message: %w", err)
 	}
@@ -375,12 +382,21 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 
 		// Check if error is retryable and we haven't exceeded max attempts
 		isRetryable := q.isRetryableError(handlerErr)
-		canRetry := q.config.RetryPolicy != nil && q.config.RetryPolicy.ShouldRetry(message.Metadata.Attempts, message.Metadata.MaxAttempts, handlerErr)
+
+		// Resolve retry policy
+		policy := q.config.RetryPolicy
+		if message.Metadata.RetryPolicyName != "" {
+			if p, ok := q.config.NamedPolicies[message.Metadata.RetryPolicyName]; ok {
+				policy = p
+			}
+		}
+
+		canRetry := policy != nil && policy.ShouldRetry(message.Metadata.Attempts, message.Metadata.MaxAttempts, handlerErr)
 
 		if isRetryable && canRetry {
 			// Move to deferred state for retry
 			message.Metadata.State = StateDeferred
-			message.Metadata.NextRetry = q.config.RetryPolicy.NextRetry(message.Metadata.Attempts, handlerErr)
+			message.Metadata.NextRetry = policy.NextRetry(message.Metadata.Attempts, handlerErr)
 			q.config.Logger.Info("Message deferred for retry",
 				"message_id", id,
 				"attempt", message.Metadata.Attempts,
@@ -413,6 +429,17 @@ func (q *queueImpl) DeleteMessage(ctx context.Context, id string) error {
 
 	q.config.Logger.Info("Message deleted", "message_id", id)
 	return nil
+}
+
+// SetMessageRetryPolicy updates the retry policy for an existing message
+func (q *queueImpl) SetMessageRetryPolicy(ctx context.Context, id string, policyName string) error {
+	metadata, err := q.GetMessageMetadata(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to get message metadata: %w", err)
+	}
+
+	metadata.RetryPolicyName = policyName
+	return q.UpdateMessageMetadata(ctx, id, metadata)
 }
 
 // Recover recovers queue state after restart (Postfix-style recovery)
@@ -531,32 +558,34 @@ func (q *queueImpl) generateMessageID() string {
 
 func (q *queueImpl) convertToMetaStorageMetadata(id string, m MessageMetadata) metastorage.MessageMetadata {
 	return metastorage.MessageMetadata{
-		ID:          id,
-		State:       q.convertToMetaStorageState(m.State),
-		Attempts:    m.Attempts,
-		MaxAttempts: m.MaxAttempts,
-		NextRetry:   m.NextRetry,
-		Created:     m.Created,
-		Updated:     m.Updated,
-		LastError:   m.LastError,
-		Size:        m.Size,
-		Priority:    m.Priority,
-		Headers:     m.Headers,
+		ID:              id,
+		State:           q.convertToMetaStorageState(m.State),
+		Attempts:        m.Attempts,
+		MaxAttempts:     m.MaxAttempts,
+		NextRetry:       m.NextRetry,
+		Created:         m.Created,
+		Updated:         m.Updated,
+		LastError:       m.LastError,
+		Size:            m.Size,
+		Priority:        m.Priority,
+		Headers:         m.Headers,
+		RetryPolicyName: m.RetryPolicyName,
 	}
 }
 
 func (q *queueImpl) convertFromMetaStorageMetadata(m metastorage.MessageMetadata) MessageMetadata {
 	return MessageMetadata{
-		State:       q.convertFromMetaStorageState(m.State),
-		Attempts:    m.Attempts,
-		MaxAttempts: m.MaxAttempts,
-		NextRetry:   m.NextRetry,
-		Created:     m.Created,
-		Updated:     m.Updated,
-		LastError:   m.LastError,
-		Size:        m.Size,
-		Priority:    m.Priority,
-		Headers:     m.Headers,
+		State:           q.convertFromMetaStorageState(m.State),
+		Attempts:        m.Attempts,
+		MaxAttempts:     m.MaxAttempts,
+		NextRetry:       m.NextRetry,
+		Created:         m.Created,
+		Updated:         m.Updated,
+		LastError:       m.LastError,
+		Size:            m.Size,
+		Priority:        m.Priority,
+		Headers:         m.Headers,
+		RetryPolicyName: m.RetryPolicyName,
 	}
 }
 

@@ -47,16 +47,17 @@ type Message struct {
 
 // MessageMetadata contains metadata about a message
 type MessageMetadata struct {
-	State       QueueState
-	Attempts    int
-	MaxAttempts int
-	NextRetry   time.Time
-	Created     time.Time
-	Updated     time.Time
-	LastError   string
-	Size        int64
-	Priority    int
-	Headers     map[string]string
+	State           QueueState
+	Attempts        int
+	MaxAttempts     int
+	NextRetry       time.Time
+	Created         time.Time
+	Updated         time.Time
+	LastError       string
+	Size            int64
+	Priority        int
+	Headers         map[string]string
+	RetryPolicyName string
 }
 
 // MessageReader provides access to message data for reading

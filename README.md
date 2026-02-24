@@ -73,12 +73,56 @@ The message scheduler operates with the following priority system:
 
 ### Retry Policy
 
-RetrySpool implements exponential backoff retry intervals:
+RetrySpool implements exponential backoff retry intervals by default:
 
 ```
 Attempt:  1     2     3    4    5    6     7     8+
 Interval: 15m   30m   1h   2h   4h   8h    16h   24h
 ```
+
+#### Per-Message Retry Policies
+
+You can define multiple named retry policies and select them for specific messages. This is useful for handling different categories of messages (e.g., critical vs. bulk) within the same queue.
+
+**1. Register Named Policies:**
+
+```go
+q := retryspool.New(
+    retryspool.WithRetryPolicy(defaultPolicy), // Global default
+    retryspool.WithNamedRetryPolicy("fast", fastPolicy),
+    retryspool.WithNamedRetryPolicy("slow", slowPolicy),
+)
+```
+
+**2. Select Policy during Enqueue:**
+
+There are two ways to specify which policy should be used for a message:
+
+**Via Context (Recommended):**
+
+```go
+ctx := retryspool.ContextWithRetryPolicy(context.Background(), "fast")
+msgID, err := q.Enqueue(ctx, nil, data)
+```
+
+**Via Header:**
+
+```go
+headers := map[string]string{
+    "x-retry-policy": "slow",
+}
+msgID, err := q.Enqueue(context.Background(), headers, data)
+```
+
+**3. Change Policy After Enqueue:**
+
+You can change the retry policy of an existing message at any time:
+
+```go
+err := q.SetMessageRetryPolicy(ctx, msgID, "slow")
+```
+
+If no policy is specified, or the named policy is not found, the global default retry policy is used.
 
 ## Core Module
 

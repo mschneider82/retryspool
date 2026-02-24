@@ -14,10 +14,10 @@ type Option func(*Config) error
 
 // Config holds queue configuration
 type Config struct {
-	DataFactory     datastorage.Factory     // Data storage factory
-	MetaFactory     metastorage.Factory     // Meta storage factory
-	DataMiddlewares []middleware.Middleware // Middleware for data storage
-	MetaMiddlewares []middleware.Middleware // Middleware for metadata storage
+	DataFactory     datastorage.Factory      // Data storage factory
+	MetaFactory     metastorage.Factory      // Meta storage factory
+	DataMiddlewares []middleware.Middleware  // Middleware for data storage
+	MetaMiddlewares []middleware.Middleware  // Middleware for metadata storage
 	StateHandlers   map[QueueState][]Handler // Handlers per queue state
 	RetryPolicy     RetryPolicy
 	MaxAttempts     int
@@ -35,6 +35,9 @@ type Config struct {
 
 	// Scheduling behavior
 	DisableImmediateTrigger bool // Disable TriggerImmediate() after Enqueue, rely only on scan interval
+
+	// Multi-policy support
+	NamedPolicies map[string]RetryPolicy
 
 	// Logging
 	Logger Logger // Optional logger (defaults to NoOpLogger)
@@ -60,6 +63,9 @@ func defaultConfig() *Config {
 
 		// Scheduling behavior defaults
 		DisableImmediateTrigger: false, // Default: immediate trigger enabled
+
+		// Multi-policy support
+		NamedPolicies: make(map[string]RetryPolicy),
 
 		// Logging defaults to no-op (silent)
 		Logger: &noOpLogger{},
@@ -96,7 +102,6 @@ func WithMetaStorage(factory metastorage.Factory, middlewares ...middleware.Midd
 	}
 }
 
-
 // WithActiveHandler registers a handler for active message delivery
 func WithActiveHandler(handler Handler) Option {
 	return func(c *Config) error {
@@ -119,13 +124,27 @@ func WithBounceHandler(handler Handler) Option {
 	}
 }
 
-// WithRetryPolicy sets the retry policy
+// WithRetryPolicy sets the global default retry policy
 func WithRetryPolicy(policy RetryPolicy) Option {
 	return func(c *Config) error {
 		if policy == nil {
 			return fmt.Errorf("retry policy cannot be nil")
 		}
 		c.RetryPolicy = policy
+		return nil
+	}
+}
+
+// WithNamedRetryPolicy registers a named retry policy
+func WithNamedRetryPolicy(name string, policy RetryPolicy) Option {
+	return func(c *Config) error {
+		if name == "" {
+			return fmt.Errorf("retry policy name cannot be empty")
+		}
+		if policy == nil {
+			return fmt.Errorf("retry policy cannot be nil")
+		}
+		c.NamedPolicies[name] = policy
 		return nil
 	}
 }

@@ -12,6 +12,8 @@ schneider.vip/retryspool/storage/meta v0.0.2 h1:dWev+erz1KB4Z+LgwctyrmLPfkaSPok2
 schneider.vip/retryspool/storage/meta v0.0.2/go.mod h1:SZ4F8XBG+XI+AXlBbWMTchl4WudA0T0H85BpteAEpEY=
 schneider.vip/retryspool/storage/meta v0.0.3 h1:WrwqvAGqFmZaCsJgxTY6qkATuG3Pi3UBiJNB6DzBvIY=
 schneider.vip/retryspool/storage/meta v0.0.3/go.mod h1:SZ4F8XBG+XI+AXlBbWMTchl4WudA0T0H85BpteAEpEY=
+schneider.vip/retryspool/storage/meta v0.0.4 h1:rxcOqtBelRdwwp95Ve+l2r2O75Ak5/iW0YxP1gPp8x4=
+schneider.vip/retryspool/storage/meta v0.0.4/go.mod h1:SZ4F8XBG+XI+AXlBbWMTchl4WudA0T0H85BpteAEpEY=
 schneider.vip/retryspool/storage/meta/filesystem v0.0.2 h1:3vFcnKlngOywGCwtrcnX2X/qKw8bO75X6bk0Dq9RtMA=
 schneider.vip/retryspool/storage/meta/filesystem v0.0.2/go.mod h1:18x5+j/CeVikVyaQmWf7SRDMhkPzFbWAz67yUVln1hY=
 schneider.vip/retryspool/storage/meta/filesystem v0.0.3 h1:5z7bgnSM9cPDsldQ6ne2arCjyv3bAG+DNgxyG/hxubY=

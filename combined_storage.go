@@ -88,7 +88,7 @@ func (c *combinedStorage) closeMiddlewareWriters(wrappedWriter *writerWithCloser
 }
 
 // StoreMessage stores both message data and metadata atomically
-func (c *combinedStorage) StoreMessage(ctx context.Context, messageID string, headers map[string]string, data io.Reader, maxAttempts int, priority int) error {
+func (c *combinedStorage) StoreMessage(ctx context.Context, messageID string, headers map[string]string, data io.Reader, maxAttempts int, priority int, retryPolicyName string) error {
 	// For storing data, we need to use a different approach since StoreData expects a Reader
 	// but we need to apply middleware to the Writer. We'll use a pipe to handle this.
 	var size int64
@@ -137,16 +137,17 @@ func (c *combinedStorage) StoreMessage(ctx context.Context, messageID string, he
 	}
 
 	metadata := metastorage.MessageMetadata{
-		ID:          messageID,
-		State:       metastorage.StateIncoming,
-		Attempts:    0,
-		MaxAttempts: maxAttempts,
-		NextRetry:   time.Now(),
-		Created:     time.Now(),
-		Updated:     time.Now(),
-		Size:        size,
-		Priority:    priority,
-		Headers:     headers,
+		ID:              messageID,
+		State:           metastorage.StateIncoming,
+		Attempts:        0,
+		MaxAttempts:     maxAttempts,
+		NextRetry:       time.Now(),
+		Created:         time.Now(),
+		Updated:         time.Now(),
+		Size:            size,
+		Priority:        priority,
+		Headers:         headers,
+		RetryPolicyName: retryPolicyName,
 	}
 
 	// Store metadata
