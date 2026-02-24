@@ -94,8 +94,11 @@ func New(options ...Option) Queue {
 
 // Enqueue adds a new message to the queue
 func (q *queueImpl) Enqueue(ctx context.Context, headers map[string]string, data io.Reader) (string, error) {
-	// Generate unique message ID
-	id := q.generateMessageID()
+	// Use message ID from context if provided, otherwise generate a new one
+	id := MessageIDFromContext(ctx)
+	if id == "" {
+		id = q.generateMessageID()
+	}
 
 	// Create message metadata
 	// Initialize headers if nil to prevent nil pointer issues
