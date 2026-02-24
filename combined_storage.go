@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"schneider.vip/retryspool/middleware"
@@ -220,17 +221,16 @@ func (c *combinedStorage) MoveToState(ctx context.Context, messageID string, fro
 
 // DeleteMessage removes both message data and metadata atomically
 func (c *combinedStorage) DeleteMessage(ctx context.Context, messageID string) error {
-	// Delete metadata first
-	err := c.metaStorage.DeleteMeta(ctx, messageID)
-	if err != nil && err != metastorage.ErrMessageNotFound {
-		return fmt.Errorf("failed to delete message metadata: %w", err)
+	// Delete data first
+	err := c.dataStorage.DeleteData(ctx, messageID)
+	if err != nil && !strings.Contains(err.Error(), "not found") {
+		return fmt.Errorf("failed to delete message data: %w", err)
 	}
 
-	// Delete data
-	err = c.dataStorage.DeleteData(ctx, messageID)
-	if err != nil {
-		// Note: We've already deleted metadata, so this is best effort
-		return fmt.Errorf("failed to delete message data: %w", err)
+	// Delete metadata last
+	err = c.metaStorage.DeleteMeta(ctx, messageID)
+	if err != nil && err != metastorage.ErrMessageNotFound {
+		return fmt.Errorf("failed to delete message metadata: %w", err)
 	}
 
 	return nil

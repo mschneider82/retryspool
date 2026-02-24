@@ -2,6 +2,7 @@ package retryspool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	datastorage "schneider.vip/retryspool/storage/data"
 	datafs "schneider.vip/retryspool/storage/data/filesystem"
 	metastorage "schneider.vip/retryspool/storage/meta"
 	metafs "schneider.vip/retryspool/storage/meta/filesystem"
@@ -340,6 +342,12 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 	// Get current message metadata
 	message, reader, err := q.GetMessage(ctx, id)
 	if err != nil {
+		// Check if it's a ghost message (data missing)
+		if errors.Is(err, datastorage.ErrDataNotFound) {
+			q.config.Logger.Warn("Ghost message detected during processing, deleting metadata", "message_id", id, "error", err)
+			_ = q.DeleteMessage(ctx, id)
+			return nil // Handled, no error to worker
+		}
 		return fmt.Errorf("failed to get message: %w", err)
 	}
 
@@ -461,7 +469,7 @@ func (q *queueImpl) Recover(ctx context.Context) error {
 
 	movedCount := 0
 	for _, message := range activeMessages {
-		err := q.MoveToState(ctx, message.ID, StateActive, StateIncoming)
+		err = q.MoveToState(ctx, message.ID, StateActive, StateIncoming)
 		if err != nil {
 			q.config.Logger.Warn("Failed to move active message to incoming during recovery", "message_id", message.ID, "error", err)
 			continue

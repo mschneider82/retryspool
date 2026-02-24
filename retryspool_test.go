@@ -3865,6 +3865,62 @@ func TestStorage_IteratorBatching(t *testing.T) {
 	}
 }
 
+func TestGhostMessageCleanup(t *testing.T) {
+	tempDir := t.TempDir()
+
+	dataFactory := datafs.NewFactory(tempDir + "/data")
+	metaFactory := metafs.NewFactory(tempDir + "/meta")
+
+	// Create queue
+	q := retryspool.New(
+		retryspool.WithDataStorage(dataFactory),
+		retryspool.WithMetaStorage(metaFactory),
+	)
+	defer q.Close()
+
+	ctx := context.Background()
+
+	// 1. Enqueue a message
+	msgID, err := q.Enqueue(ctx, nil, strings.NewReader("test data"))
+	if err != nil {
+		t.Fatalf("Failed to enqueue: %v", err)
+	}
+
+	// 2. Simulate ghost message by deleting data only
+	// We need to access the data storage backend directly to bypass DeleteMessage which deletes both
+	config := &retryspool.Config{
+		DataFactory: dataFactory,
+	}
+	dataBackend, _ := config.DataFactory.Create()
+	defer dataBackend.Close()
+	err = dataBackend.DeleteData(ctx, msgID)
+	if err != nil {
+		t.Fatalf("Failed to delete data only: %v", err)
+	}
+
+	// 3. Try to process the message. It should be cleaned up automatically.
+	handler := &ghostMockHandler{}
+
+	err = q.ProcessMessage(ctx, msgID, handler)
+	if err != nil {
+		t.Errorf("ProcessMessage should not return error for ghost message, but got: %v", err)
+	}
+
+	// 4. Verify metadata is gone
+	_, err = q.GetMessageMetadata(ctx, msgID)
+	if err == nil {
+		t.Error("Metadata should have been deleted for ghost message")
+	}
+}
+
+type ghostMockHandler struct{}
+
+func (h *ghostMockHandler) Handle(ctx context.Context, msg retryspool.Message, reader retryspool.MessageReader) error {
+	return nil
+}
+func (h *ghostMockHandler) Name() string                             { return "ghost-mock" }
+func (h *ghostMockHandler) CanHandle(headers map[string]string) bool { return true }
+
 func TestHeaders_EmptyAndNilHandling(t *testing.T) {
 	tempDir := t.TempDir()
 

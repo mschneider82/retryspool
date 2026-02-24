@@ -4,10 +4,14 @@ schneider.vip/retryspool/middleware v0.0.2 h1:jJk+HaskpUKp3ZquzeqKTYdD9ufmfnCQ3d
 schneider.vip/retryspool/middleware v0.0.2/go.mod h1:lI68OHGUOilvn7rY2kK6gvRzL1KjXCdRxK7NAPA+pCw=
 schneider.vip/retryspool/storage/data v0.0.2 h1:+fIua47xbpMzOvHsFR4vvHXVaU/43xsPKMNMuIR7Zh0=
 schneider.vip/retryspool/storage/data v0.0.2/go.mod h1:vav/CfpCM6nxcuRy+SFp9wU26jAHi5Z/r1sBCgO/cZA=
+schneider.vip/retryspool/storage/data v0.0.3 h1:xCxyGQ9uYcb4C7eF3xt96Y8kegexZE4cwhkJnsA2SXQ=
+schneider.vip/retryspool/storage/data v0.0.3/go.mod h1:vav/CfpCM6nxcuRy+SFp9wU26jAHi5Z/r1sBCgO/cZA=
 schneider.vip/retryspool/storage/data/filesystem v0.0.3 h1:ctKiEGTHQI28M4kRgh81dM0M2hk7OpUQc8NwCWzpAfQ=
 schneider.vip/retryspool/storage/data/filesystem v0.0.3/go.mod h1:jdrzi9SJEu0+E76VewT6OTr4KVp9Am2I4JidvQwI1RU=
 schneider.vip/retryspool/storage/data/filesystem v0.0.4 h1:Xha0ooSGbMoovxDDHZUFk3h1K/g32qJ88V9gq5BPICY=
 schneider.vip/retryspool/storage/data/filesystem v0.0.4/go.mod h1:tSqt1RtotDA2If7huaESWiTaWTB7ZCG5Oe+W0k5Rnr8=
+schneider.vip/retryspool/storage/data/filesystem v0.0.5 h1:AqDI7fjbW2Jz0BBY+mVt5qwO6EKI1rO7MoLCvMBosRc=
+schneider.vip/retryspool/storage/data/filesystem v0.0.5/go.mod h1:5kGUomso1TshThc/BCDQFUB3aalNt/NZaaDveDTYThY=
 schneider.vip/retryspool/storage/meta v0.0.2 h1:dWev+erz1KB4Z+LgwctyrmLPfkaSPok21+lXVYHUo9w=
 schneider.vip/retryspool/storage/meta v0.0.2/go.mod h1:SZ4F8XBG+XI+AXlBbWMTchl4WudA0T0H85BpteAEpEY=
 schneider.vip/retryspool/storage/meta v0.0.3 h1:WrwqvAGqFmZaCsJgxTY6qkATuG3Pi3UBiJNB6DzBvIY=
@@ -18,3 +22,5 @@ schneider.vip/retryspool/storage/meta/filesystem v0.0.2 h1:3vFcnKlngOywGCwtrcnX2
 schneider.vip/retryspool/storage/meta/filesystem v0.0.2/go.mod h1:18x5+j/CeVikVyaQmWf7SRDMhkPzFbWAz67yUVln1hY=
 schneider.vip/retryspool/storage/meta/filesystem v0.0.3 h1:5z7bgnSM9cPDsldQ6ne2arCjyv3bAG+DNgxyG/hxubY=
 schneider.vip/retryspool/storage/meta/filesystem v0.0.3/go.mod h1:DhgX+tluiDZAaqAx797XdbqDHUYgENZ79mdN4KqUt38=
+schneider.vip/retryspool/storage/meta/filesystem v0.0.4 h1:7xUMeRY9MHFLM2ed2fGnMveJ6b3QGdJ/3W2hFiXd1h4=
+schneider.vip/retryspool/storage/meta/filesystem v0.0.4/go.mod h1:9lAcQPS06tpjgOP9JwMQWVGhCGSWlCyzAwS0IuoV6Gg=
