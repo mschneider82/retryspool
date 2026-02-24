@@ -363,6 +363,9 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 
 		q.config.Logger.Info("Processing message", "message_id", id, "handler", handler.Name())
 
+		// Add message ID to context automatically so handlers can use it
+		ctx = ContextWithMessageID(ctx, id)
+
 		// Process message with handler - reader will be closed after this
 		handlerErr = handler.Handle(ctx, message, reader)
 	}()

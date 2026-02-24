@@ -66,6 +66,21 @@ func RetryPolicyFromContext(ctx context.Context) string {
 	return ""
 }
 
+type messageIDKey struct{}
+
+// ContextWithMessageID returns a context with a message ID
+func ContextWithMessageID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, messageIDKey{}, id)
+}
+
+// MessageIDFromContext returns the message ID from the context
+func MessageIDFromContext(ctx context.Context) string {
+	if id, ok := ctx.Value(messageIDKey{}).(string); ok {
+		return id
+	}
+	return ""
+}
+
 // Handler processes messages
 type Handler interface {
 	// Handle processes a message with streaming data

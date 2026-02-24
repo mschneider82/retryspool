@@ -456,6 +456,19 @@ func (h *EmailHandler) Handle(ctx context.Context, message retryspool.Message, d
     return nil
 }
 
+### Message ID in Context
+
+RetrySpool automatically injects the message ID into the context when processing a message. You can retrieve it in your handlers for logging or tracing:
+
+```go
+func (h *MyHandler) Handle(ctx context.Context, message retryspool.Message, data retryspool.MessageReader) error {
+    id := retryspool.MessageIDFromContext(ctx)
+    log.Printf("[%s] Processing message...", id)
+    // ...
+    return nil
+}
+```
+
 // WebhookBounceHandler processes bounced messages by sending webhook notifications
 type WebhookBounceHandler struct{}
 
