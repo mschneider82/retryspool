@@ -35,6 +35,7 @@ type Config struct {
 
 	// Scheduling behavior
 	DisableImmediateTrigger bool // Disable TriggerImmediate() after Enqueue, rely only on scan interval
+	DisableRecovery         bool // Disable Recover() during Start()
 
 	// Multi-policy support
 	NamedPolicies map[string]RetryPolicy
@@ -63,6 +64,7 @@ func defaultConfig() *Config {
 
 		// Scheduling behavior defaults
 		DisableImmediateTrigger: false, // Default: immediate trigger enabled
+		DisableRecovery:         false, // Default: recovery enabled during start
 
 		// Multi-policy support
 		NamedPolicies: make(map[string]RetryPolicy),
@@ -307,6 +309,14 @@ func WithLogger(logger Logger) Option {
 func WithDisableImmediateTrigger(disable bool) Option {
 	return func(c *Config) error {
 		c.DisableImmediateTrigger = disable
+		return nil
+	}
+}
+
+// WithDisableRecovery disables the recovery process during Start()
+func WithDisableRecovery(disable bool) Option {
+	return func(c *Config) error {
+		c.DisableRecovery = disable
 		return nil
 	}
 }

@@ -388,12 +388,6 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 		message.Metadata.LastError = handlerErr.Error()
 		message.Metadata.Attempts++
 
-		q.config.Logger.Error("Message processing failed",
-			"message_id", id,
-			"attempt", message.Metadata.Attempts,
-			"max_attempts", message.Metadata.MaxAttempts,
-			"error", handlerErr)
-
 		// Check if error is retryable and we haven't exceeded max attempts
 		isRetryable := q.isRetryableError(handlerErr)
 
@@ -415,15 +409,20 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 				"message_id", id,
 				"attempt", message.Metadata.Attempts,
 				"max_attempts", message.Metadata.MaxAttempts,
-				"next_retry", message.Metadata.NextRetry)
+				"next_retry", message.Metadata.NextRetry,
+				"error", handlerErr)
 		} else {
 			// Move to bounce state
 			message.Metadata.State = StateBounce
-			if !isRetryable {
-				q.config.Logger.Error("Message bounced due to permanent failure", "message_id", id, "error", handlerErr)
-			} else {
-				q.config.Logger.Error("Message bounced after max attempts exceeded", "message_id", id, "attempts", message.Metadata.Attempts)
+			reason := "permanent failure"
+			if isRetryable {
+				reason = "max attempts exceeded"
 			}
+			q.config.Logger.Error("Message bounced",
+				"message_id", id,
+				"reason", reason,
+				"attempts", message.Metadata.Attempts,
+				"error", handlerErr)
 		}
 
 		return q.UpdateMessageMetadata(ctx, id, message.Metadata)
@@ -519,16 +518,18 @@ func (q *queueImpl) Start(ctx context.Context) error {
 		return fmt.Errorf("queue is already running")
 	}
 
-	// Run recovery first
-	err := q.Recover(ctx)
-	if err != nil {
-		q.running.Store(false)
-		return fmt.Errorf("failed to recover queue: %w", err)
+	// Run recovery first (if not disabled)
+	if !q.config.DisableRecovery {
+		if err := q.Recover(ctx); err != nil {
+			q.running.Store(false)
+			return fmt.Errorf("failed to recover queue: %w", err)
+		}
+	} else {
+		q.config.Logger.Info("Queue recovery disabled by configuration")
 	}
 
 	// Start the centralized scheduler
-	err = q.scheduler.Start(ctx)
-	if err != nil {
+	if err := q.scheduler.Start(ctx); err != nil {
 		q.running.Store(false)
 		return fmt.Errorf("failed to start scheduler: %w", err)
 	}
