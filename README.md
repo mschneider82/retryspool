@@ -10,21 +10,21 @@ RetrySpool implements a multi-state queue system where messages flow through dif
 
 ### Queue States
 
-Messages in RetrySpool flow through five distinct states:
+Messages in RetrySpool flow through six distinct states:
 
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  INCOMING   │───▶│   ACTIVE    │───▶│  COMPLETED  │
+│  INCOMING   │───▶│   ACTIVE    │───▶│  ARCHIVED   │
 │   (new)     │    │(processing) │    │ (success)   │
 └─────────────┘    └─────────────┘    └─────────────┘
-                           │                   
-                           ▼                   
-                   ┌─────────────┐            
-                   │  DEFERRED   │            
-                   │ (retry wait)│            
-                   └─────────────┘            
-                           │                   
-                           ▼                   
+                           │                 ▲
+                           ▼                 │
+                   ┌─────────────┐           │
+                   │  DEFERRED   │───────────┤
+                   │ (retry wait)│           │
+                   └─────────────┘           │
+                           │                 │
+                           ▼                 │
                    ┌─────────────┐    ┌─────────────┐
                    │    HOLD     │    │   BOUNCE    │
                    │ (admin hold)│    │(perm. fail) │
@@ -36,7 +36,25 @@ Messages in RetrySpool flow through five distinct states:
 - **ACTIVE**: Messages currently being processed by handlers
 - **DEFERRED**: Messages that failed temporarily and are waiting for retry
 - **HOLD**: Messages manually paused by administrator intervention
-- **BOUNCE**: Messages that failed permanently and will not be retried
+- **BOUNCE**: Messages that failed permanently. Handlers can process these to generate DSNs or notifications.
+- **ARCHIVED**: Final state for completed messages (both successful and failed) if archiving is enabled.
+
+### Message Archiving
+
+By default, RetrySpool deletes messages after successful processing and leaves permanent failures in the `BOUNCE` state. You can enable archiving to keep messages for audit or manual re-processing:
+
+- **Archive Success**: Moves successfully processed messages to `StateArchived` instead of deleting them.
+- **Archive Bounce**: Moves permanently failed messages to `StateArchived` after the bounce handlers have finished.
+
+```go
+q := retryspool.New(
+    // ... storage and handlers ...
+    retryspool.WithArchiveSuccess(true),
+    retryspool.WithArchiveBounce(true),
+)
+```
+
+Archived messages can be moved back to `INCOMING` via the API or CLI to trigger a new delivery attempt.
 
 ### Scheduler Flow
 

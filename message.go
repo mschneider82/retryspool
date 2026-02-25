@@ -19,6 +19,8 @@ const (
 	StateHold
 	// StateBounce represents messages that permanently failed
 	StateBounce
+	// StateArchived represents completed messages (success or permanent failure)
+	StateArchived
 )
 
 // String returns the string representation of the queue state
@@ -34,6 +36,8 @@ func (s QueueState) String() string {
 		return "hold"
 	case StateBounce:
 		return "bounce"
+	case StateArchived:
+		return "archived"
 	default:
 		return "unknown"
 	}

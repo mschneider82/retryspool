@@ -42,6 +42,10 @@ type Config struct {
 
 	// Logging
 	Logger Logger // Optional logger (defaults to NoOpLogger)
+
+	// Archive behavior
+	ArchiveSuccess bool // If true, successfully processed messages are moved to StateArchived instead of being deleted
+	ArchiveBounce  bool // If true, bounced messages are moved to StateArchived instead of remaining in StateBounce
 }
 
 // defaultConfig returns a default configuration
@@ -71,6 +75,10 @@ func defaultConfig() *Config {
 
 		// Logging defaults to no-op (silent)
 		Logger: &noOpLogger{},
+
+		// Archive behavior defaults
+		ArchiveSuccess: false,
+		ArchiveBounce:  false,
 
 		// Default storage will be set to filesystem if not specified
 		DataFactory: nil, // Will default to filesystem
@@ -317,6 +325,22 @@ func WithDisableImmediateTrigger(disable bool) Option {
 func WithDisableRecovery(disable bool) Option {
 	return func(c *Config) error {
 		c.DisableRecovery = disable
+		return nil
+	}
+}
+
+// WithArchiveSuccess enables archiving for successfully processed messages
+func WithArchiveSuccess(archive bool) Option {
+	return func(c *Config) error {
+		c.ArchiveSuccess = archive
+		return nil
+	}
+}
+
+// WithArchiveBounce enables archiving for bounced messages
+func WithArchiveBounce(archive bool) Option {
+	return func(c *Config) error {
+		c.ArchiveBounce = archive
 		return nil
 	}
 }

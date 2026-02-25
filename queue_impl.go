@@ -342,56 +342,48 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 	// Get current message metadata
 	message, reader, err := q.GetMessage(ctx, id)
 	if err != nil {
-		// Check if it's a ghost message (data missing)
 		if errors.Is(err, datastorage.ErrDataNotFound) {
 			q.config.Logger.Warn("Ghost message detected during processing, deleting metadata", "message_id", id, "error", err)
 			_ = q.DeleteMessage(ctx, id)
-			return nil // Handled, no error to worker
+			return nil
 		}
 		return fmt.Errorf("failed to get message: %w", err)
 	}
 
-	// IMPORTANT: Close reader immediately after handler processing to prevent race conditions
-	// The reader must be closed before any metadata updates to avoid "message data not found" errors
+	// Capture state BEFORE we potentially move it to active
+	originalState := message.Metadata.State
+
 	var handlerErr error
+	var stateTransitionFailed bool
 	func() {
-		defer reader.Close() // Ensure reader is closed in this scope
+		defer reader.Close()
 
 		// Only move to active if not already in active state
 		if message.Metadata.State != StateActive {
-			// Atomic state transition: only move if still in expected state
 			err = q.MoveToState(ctx, id, message.Metadata.State, StateActive)
 			if err != nil {
-				// If state changed (e.g., bounced by another goroutine), skip processing
 				q.config.Logger.Warn("Message state transition failed, skipping processing", "message_id", id, "error", err)
-				handlerErr = nil // Not a handler error, just skip processing
+				stateTransitionFailed = true
 				return
 			}
-
-			// Update message state (already moved to active in scheduler)
 			message.Metadata.State = StateActive
 		}
 
 		q.config.Logger.Info("Processing message", "message_id", id, "handler", handler.Name())
-
-		// Add message ID to context automatically so handlers can use it
 		ctx = ContextWithMessageID(ctx, id)
-
-		// Process message with handler - reader will be closed after this
 		handlerErr = handler.Handle(ctx, message, reader)
 	}()
 
-	// Reader is now guaranteed to be closed before any metadata operations
+	// If state transition failed, skip all further processing
+	if stateTransitionFailed {
+		return nil
+	}
 
 	if handlerErr != nil {
-		// Update metadata with error
 		message.Metadata.LastError = handlerErr.Error()
 		message.Metadata.Attempts++
 
-		// Check if error is retryable and we haven't exceeded max attempts
 		isRetryable := q.isRetryableError(handlerErr)
-
-		// Resolve retry policy
 		policy := q.config.RetryPolicy
 		if message.Metadata.RetryPolicyName != "" {
 			if p, ok := q.config.NamedPolicies[message.Metadata.RetryPolicyName]; ok {
@@ -402,7 +394,6 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 		canRetry := policy != nil && policy.ShouldRetry(message.Metadata.Attempts, message.Metadata.MaxAttempts, handlerErr)
 
 		if isRetryable && canRetry {
-			// Move to deferred state for retry
 			message.Metadata.State = StateDeferred
 			message.Metadata.NextRetry = policy.NextRetry(message.Metadata.Attempts, handlerErr)
 			q.config.Logger.Info("Message deferred for retry",
@@ -412,15 +403,12 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 				"next_retry", message.Metadata.NextRetry,
 				"error", handlerErr)
 		} else {
-			// Move to bounce state
+			// Messages ALWAYS go to StateBounce first, even if ArchiveBounce is true.
+			// This ensures the bounce scheduler picks it up for DSN generation.
 			message.Metadata.State = StateBounce
-			reason := "permanent failure"
-			if isRetryable {
-				reason = "max attempts exceeded"
-			}
-			q.config.Logger.Error("Message bounced",
+
+			q.config.Logger.Error("Message failed permanently, moving to bounce state",
 				"message_id", id,
-				"reason", reason,
 				"attempts", message.Metadata.Attempts,
 				"error", handlerErr)
 		}
@@ -428,8 +416,30 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 		return q.UpdateMessageMetadata(ctx, id, message.Metadata)
 	}
 
-	// Success - delete message
+	// Success
 	q.config.Logger.Info("Message processed successfully", "message_id", id)
+
+	// Reload metadata to capture any changes made by the handler (e.g. DSN ID)
+	if updatedMeta, err := q.GetMessageMetadata(ctx, id); err == nil {
+		message.Metadata = updatedMeta
+	} else {
+		q.config.Logger.Warn("Failed to reload metadata after successful processing, using original", "message_id", id, "error", err)
+	}
+
+	// Determine if we should archive based on original state
+	if originalState == StateBounce {
+		if q.config.ArchiveBounce {
+			message.Metadata.State = StateArchived
+			q.config.Logger.Info("Archiving bounced message", "message_id", id)
+			return q.UpdateMessageMetadata(ctx, id, message.Metadata)
+		}
+	} else if q.config.ArchiveSuccess {
+		message.Metadata.State = StateArchived
+		q.config.Logger.Info("Archiving successful message", "message_id", id)
+		return q.UpdateMessageMetadata(ctx, id, message.Metadata)
+	}
+
+	// Default: delete on success
 	return q.DeleteMessage(ctx, id)
 }
 
@@ -455,12 +465,10 @@ func (q *queueImpl) SetMessageRetryPolicy(ctx context.Context, id string, policy
 	return q.UpdateMessageMetadata(ctx, id, metadata)
 }
 
-// Recover recovers queue state after restart (Postfix-style recovery)
+// Recover recovers queue state after restart
 func (q *queueImpl) Recover(ctx context.Context) error {
 	q.config.Logger.Info("Starting queue recovery")
 
-	// Move active messages back to incoming state for reprocessing
-	// This ensures proper recovery behavior where interrupted messages get requeued
 	activeMessages, err := q.GetMessagesInState(ctx, StateActive)
 	if err != nil {
 		return fmt.Errorf("failed to get active messages: %w", err)
@@ -468,19 +476,16 @@ func (q *queueImpl) Recover(ctx context.Context) error {
 
 	movedCount := 0
 	for _, message := range activeMessages {
-		err = q.MoveToState(ctx, message.ID, StateActive, StateIncoming)
-		if err != nil {
+		if err := q.MoveToState(ctx, message.ID, StateActive, StateIncoming); err != nil {
 			q.config.Logger.Warn("Failed to move active message to incoming during recovery", "message_id", message.ID, "error", err)
 			continue
 		}
 		movedCount++
 	}
-
 	if movedCount > 0 {
 		q.config.Logger.Info("Moved active messages to incoming for reprocessing", "count", movedCount)
 	}
 
-	// Check for deferred messages that are ready for retry
 	deferredMessages, err := q.GetMessagesInState(ctx, StateDeferred)
 	if err != nil {
 		return fmt.Errorf("failed to get deferred messages: %w", err)
@@ -490,17 +495,13 @@ func (q *queueImpl) Recover(ctx context.Context) error {
 	readyCount := 0
 	for _, message := range deferredMessages {
 		if message.Metadata.NextRetry.Before(now) {
-			// Move ready deferred messages to active (not incoming)
-			err := q.MoveToState(ctx, message.ID, StateDeferred, StateActive)
-			if err != nil {
-				q.config.Logger.Warn("Failed to requeue message", "message_id", message.ID, "error", err)
+			if err := q.MoveToState(ctx, message.ID, StateDeferred, StateActive); err != nil {
+				q.config.Logger.Warn("Failed to requeue deferred message during recovery", "message_id", message.ID, "error", err)
 				continue
 			}
-			q.config.Logger.Info("Requeued deferred message for retry", "message_id", message.ID)
 			readyCount++
 		}
 	}
-
 	if readyCount > 0 {
 		q.config.Logger.Info("Moved deferred messages to active for retry", "count", readyCount)
 	}
@@ -518,23 +519,18 @@ func (q *queueImpl) Start(ctx context.Context) error {
 		return fmt.Errorf("queue is already running")
 	}
 
-	// Run recovery first (if not disabled)
 	if !q.config.DisableRecovery {
 		if err := q.Recover(ctx); err != nil {
 			q.running.Store(false)
 			return fmt.Errorf("failed to recover queue: %w", err)
 		}
-	} else {
-		q.config.Logger.Info("Queue recovery disabled by configuration")
 	}
 
-	// Start the centralized scheduler
 	if err := q.scheduler.Start(ctx); err != nil {
 		q.running.Store(false)
 		return fmt.Errorf("failed to start scheduler: %w", err)
 	}
 
-	q.config.Logger.Info("Queue started with centralized scheduler")
 	return nil
 }
 
@@ -547,21 +543,18 @@ func (q *queueImpl) Stop(ctx context.Context) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// Stop the centralized scheduler
 	err := q.scheduler.Stop(ctx)
 	if err != nil {
 		q.config.Logger.Error("Error stopping scheduler", "error", err)
 	}
-
 	close(q.stopCh)
 
-	q.config.Logger.Info("Queue stopped")
-	return nil
+	return err
 }
 
 // Close closes the queue and releases resources
 func (q *queueImpl) Close() error {
-	q.Stop(context.Background())
+	_ = q.Stop(context.Background())
 	return q.storage.Close()
 }
 
@@ -612,7 +605,6 @@ func (q *queueImpl) convertFromMetaStorageState(s metastorage.QueueState) QueueS
 	return QueueState(s)
 }
 
-// messageReader implements MessageReader
 type messageReader struct {
 	io.ReadCloser
 	size int64
@@ -622,18 +614,14 @@ func (r *messageReader) Size() int64 {
 	return r.size
 }
 
-// isRetryableError checks if an error should be retried
 func (q *queueImpl) isRetryableError(err error) bool {
-	// Check for RetryableError wrapper
 	if IsRetryable(err) {
 		return true
 	}
 
-	// Check if handler implements RetryableHandler interface
 	if retryableHandler, ok := err.(interface{ IsRetryable(error) bool }); ok {
 		return retryableHandler.IsRetryable(err)
 	}
 
-	// Default: assume non-retryable
 	return false
 }
