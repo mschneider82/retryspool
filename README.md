@@ -474,6 +474,29 @@ func (h *EmailHandler) Handle(ctx context.Context, message retryspool.Message, d
     return nil
 }
 
+### Context-based Header Backchannel
+
+Handlers can set or overwrite any message headers during processing without changing the handler interface. This is especially useful for capturing delivery details (e.g., remote MTA responses, queue IDs) for archiving.
+
+**Usage in Handler:**
+
+```go
+func (h *MyHandler) Handle(ctx context.Context, message retryspool.Message, data retryspool.MessageReader) error {
+    // Set a single header
+    retryspool.SetContextHeader(ctx, "x-remote-server", "mx1.example.com")
+
+    // Set multiple headers at once
+    retryspool.SetContextHeaders(ctx, map[string]string{
+        "x-remote-response": "250 OK: queued as 12345",
+        "x-remote-queue-id": "12345",
+    })
+
+    return nil
+}
+```
+
+The set headers are automatically merged into the message metadata by the queue – both in case of success and errors (e.g., to log the last attempted server).
+
 ### Message ID in Context
 
 RetrySpool automatically injects the message ID into the context when processing a message. You can retrieve it in your handlers for logging or tracing:

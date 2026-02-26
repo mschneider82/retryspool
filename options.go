@@ -53,18 +53,18 @@ func defaultConfig() *Config {
 	return &Config{
 		RetryPolicy:     DefaultExponentialRetryPolicy(), // Use exponential backoff by default
 		MaxAttempts:     10,                              // Increased for better retry behavior
-		ProcessInterval: 30 * time.Second,
-		MaxConcurrency:  10,
+		ProcessInterval: 10 * time.Second,
+		MaxConcurrency:  2,
 		DefaultPriority: 5,
 		StateHandlers:   make(map[QueueState][]Handler),
 
 		// Postfix-like defaults
-		MaxActiveMessages:    200, // Similar to postfix default_process_limit
-		MaxIncomingBatch:     100, // Similar to postfix qmgr_message_active_limit
-		MaxDeferredBatch:     50,  // Process fewer deferred messages
-		MaxBounceBatch:       20,  // Process fewer bounce messages
-		MessageBatchSize:     100, // Storage pagination size
-		ConcurrentProcessors: 10,  // Maximum concurrent processors
+		MaxActiveMessages:    50, // Similar to postfix default_process_limit
+		MaxIncomingBatch:     20, // Similar to postfix qmgr_message_active_limit
+		MaxDeferredBatch:     20, // Process fewer deferred messages
+		MaxBounceBatch:       10, // Process fewer bounce messages
+		MessageBatchSize:     20, // Storage pagination size
+		ConcurrentProcessors: 2,  // Maximum concurrent processors
 
 		// Scheduling behavior defaults
 		DisableImmediateTrigger: false, // Default: immediate trigger enabled

@@ -1,6 +1,7 @@
 package retryspool
 
 import (
+	"context"
 	"io"
 	"time"
 )
@@ -74,4 +75,38 @@ type MessageReader interface {
 type MessageWriter interface {
 	io.WriteCloser
 	Size() int64
+}
+
+type headerCollectorKey struct{}
+
+// NewHeaderCollectorContext returns a context that collects header updates
+// from handlers. The queue calls this internally before invoking a handler.
+// Returns the enriched context and the map that will be populated by the
+// handler.
+func NewHeaderCollectorContext(ctx context.Context) (context.Context, map[string]string) {
+	headers := make(map[string]string)
+	return context.WithValue(ctx, headerCollectorKey{}, headers), headers
+}
+
+// SetContextHeaders merges the given headers into the context's header
+// collector. Handlers call this to set or overwrite message headers after
+// processing. Safe no-op if no collector is present in the context.
+func SetContextHeaders(ctx context.Context, headers map[string]string) {
+	collector, ok := ctx.Value(headerCollectorKey{}).(map[string]string)
+	if !ok || collector == nil {
+		return
+	}
+	for k, v := range headers {
+		collector[k] = v
+	}
+}
+
+// SetContextHeader sets a single header in the context's header collector.
+// Safe no-op if no collector is present in the context.
+func SetContextHeader(ctx context.Context, key, value string) {
+	collector, ok := ctx.Value(headerCollectorKey{}).(map[string]string)
+	if !ok || collector == nil {
+		return
+	}
+	collector[key] = value
 }

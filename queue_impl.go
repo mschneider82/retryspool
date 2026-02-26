@@ -355,6 +355,7 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 
 	var handlerErr error
 	var stateTransitionFailed bool
+	var collectedHeaders map[string]string
 	func() {
 		defer reader.Close()
 
@@ -371,6 +372,7 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 
 		q.config.Logger.Info("Processing message", "message_id", id, "handler", handler.Name())
 		ctx = ContextWithMessageID(ctx, id)
+		ctx, collectedHeaders = NewHeaderCollectorContext(ctx)
 		handlerErr = handler.Handle(ctx, message, reader)
 	}()
 
@@ -380,6 +382,16 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 	}
 
 	if handlerErr != nil {
+		// Merge handler-provided headers even on failure (e.g. last attempted server)
+		if len(collectedHeaders) > 0 {
+			if message.Metadata.Headers == nil {
+				message.Metadata.Headers = make(map[string]string)
+			}
+			for k, v := range collectedHeaders {
+				message.Metadata.Headers[k] = v
+			}
+		}
+
 		message.Metadata.LastError = handlerErr.Error()
 		message.Metadata.Attempts++
 
@@ -419,8 +431,27 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 	// Success
 	q.config.Logger.Info("Message processed successfully", "message_id", id)
 
+	// Merge handler-provided headers into metadata
+	if len(collectedHeaders) > 0 {
+		if message.Metadata.Headers == nil {
+			message.Metadata.Headers = make(map[string]string)
+		}
+		for k, v := range collectedHeaders {
+			message.Metadata.Headers[k] = v
+		}
+	}
+
 	// Reload metadata to capture any changes made by the handler (e.g. DSN ID)
+	// and then re-apply our merged headers.
 	if updatedMeta, err := q.GetMessageMetadata(ctx, id); err == nil {
+		if message.Metadata.Headers != nil {
+			if updatedMeta.Headers == nil {
+				updatedMeta.Headers = make(map[string]string)
+			}
+			for k, v := range message.Metadata.Headers {
+				updatedMeta.Headers[k] = v
+			}
+		}
 		message.Metadata = updatedMeta
 	} else {
 		q.config.Logger.Warn("Failed to reload metadata after successful processing, using original", "message_id", id, "error", err)
@@ -439,7 +470,9 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 		return q.UpdateMessageMetadata(ctx, id, message.Metadata)
 	}
 
-	// Default: delete on success
+	// If we have collected headers but are not archiving, we should probably
+	// still persist them if we were to keep the message, but here we delete it.
+	// However, if we didn't archive, we delete:
 	return q.DeleteMessage(ctx, id)
 }
 
@@ -598,11 +631,41 @@ func (q *queueImpl) convertFromMetaStorageMetadata(m metastorage.MessageMetadata
 }
 
 func (q *queueImpl) convertToMetaStorageState(s QueueState) metastorage.QueueState {
-	return metastorage.QueueState(s)
+	switch s {
+	case StateIncoming:
+		return metastorage.StateIncoming
+	case StateActive:
+		return metastorage.StateActive
+	case StateDeferred:
+		return metastorage.StateDeferred
+	case StateHold:
+		return metastorage.StateHold
+	case StateBounce:
+		return metastorage.StateBounce
+	case StateArchived:
+		return metastorage.StateArchived
+	default:
+		return metastorage.StateIncoming
+	}
 }
 
 func (q *queueImpl) convertFromMetaStorageState(s metastorage.QueueState) QueueState {
-	return QueueState(s)
+	switch s {
+	case metastorage.StateIncoming:
+		return StateIncoming
+	case metastorage.StateActive:
+		return StateActive
+	case metastorage.StateDeferred:
+		return StateDeferred
+	case metastorage.StateHold:
+		return StateHold
+	case metastorage.StateBounce:
+		return StateBounce
+	case metastorage.StateArchived:
+		return StateArchived
+	default:
+		return StateIncoming
+	}
 }
 
 type messageReader struct {

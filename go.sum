@@ -28,3 +28,5 @@ schneider.vip/retryspool/storage/meta/filesystem v0.0.4 h1:7xUMeRY9MHFLM2ed2fGnM
 schneider.vip/retryspool/storage/meta/filesystem v0.0.4/go.mod h1:9lAcQPS06tpjgOP9JwMQWVGhCGSWlCyzAwS0IuoV6Gg=
 schneider.vip/retryspool/storage/meta/filesystem v0.0.5 h1:NnGRarHqRn9B09lWrqzeCCeDmfEQaieK6ocDMqDQHEY=
 schneider.vip/retryspool/storage/meta/filesystem v0.0.5/go.mod h1:THNmwuvCUTarvLkH7+IBWJBNZMwtJy//QpAlCj+HQAc=
+schneider.vip/retryspool/storage/meta/filesystem v0.0.6 h1:oMAA0qSlDHVXHFyCHPfkJ2/0aUUGRFPaJiCrDShUVLw=
+schneider.vip/retryspool/storage/meta/filesystem v0.0.6/go.mod h1:THNmwuvCUTarvLkH7+IBWJBNZMwtJy//QpAlCj+HQAc=
