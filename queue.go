@@ -11,6 +11,12 @@ type Queue interface {
 	// Enqueue adds a new message to the queue
 	Enqueue(ctx context.Context, headers map[string]string, data io.Reader) (string, error)
 
+	// BeginEnqueue starts a streaming enqueue transaction.
+	// Data can be written to the returned transaction, headers can be
+	// added/modified at any time, and the message is only visible in
+	// the queue after Commit() is called.
+	BeginEnqueue(ctx context.Context) (EnqueueTransaction, error)
+
 	// GetMessage retrieves message metadata and data reader
 	GetMessage(ctx context.Context, id string) (Message, MessageReader, error)
 
@@ -49,6 +55,37 @@ type Queue interface {
 
 	// Close closes the queue and releases resources
 	Close() error
+}
+
+// EnqueueTransaction represents an in-progress message enqueue.
+// The transaction implements io.Writer for streaming body data.
+// Headers can be set at any point before Commit().
+// The message only becomes visible in the queue after Commit().
+type EnqueueTransaction interface {
+	// io.Writer – Body-Daten streamen
+	io.Writer
+
+	// MessageID returns the pre-allocated message ID.
+	// Available immediately after BeginEnqueue().
+	MessageID() string
+
+	// SetHeader sets or overwrites a single metadata header.
+	// Can be called at any time before Commit(), even after body writes.
+	SetHeader(key, value string)
+
+	// SetHeaders merges multiple headers. Same rules as SetHeader.
+	SetHeaders(headers map[string]string)
+
+	// Commit finalizes the enqueue: closes the data stream, writes
+	// metadata with all collected headers, and makes the message
+	// visible in the queue (state = INCOMING).
+	// After Commit(), the transaction must not be used anymore.
+	Commit() (string, error)
+
+	// Abort cancels the transaction: stops the data stream and
+	// cleans up any partially written data.
+	// Safe to call multiple times. Safe to call after Commit (no-op).
+	Abort() error
 }
 
 type retryPolicyKey struct{}

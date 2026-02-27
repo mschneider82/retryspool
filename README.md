@@ -152,6 +152,7 @@ If no policy is specified, or the named policy is not found, the global default 
 // Queue represents the main message queue interface
 type Queue interface {
     Enqueue(ctx context.Context, headers map[string]string, data io.Reader) (string, error)
+    BeginEnqueue(ctx context.Context) (EnqueueTransaction, error)
     GetMessage(ctx context.Context, id string) (Message, MessageReader, error)
     ProcessMessage(ctx context.Context, id string, handler Handler) error
     MoveToState(ctx context.Context, id string, fromState, toState QueueState) error
@@ -473,6 +474,45 @@ func (h *EmailHandler) Handle(ctx context.Context, message retryspool.Message, d
     log.Printf("Email sent successfully to %s", message.Metadata.Headers["to"])
     return nil
 }
+
+### Transactional Enqueue
+
+RetrySpool supports transactional enqueuing, which is useful when you want to stream the message body and decide on headers (like metadata) while or after streaming, or if you need to ensure the message is only visible in the queue once the entire body has been written.
+
+```go
+// Start a new transaction
+tx, err := queue.BeginEnqueue(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+// You can get the pre-allocated Message ID immediately
+msgID := tx.MessageID()
+
+// Stream data to the transaction (implements io.Writer)
+_, err = io.WriteString(tx, "Streaming message body...")
+if err != nil {
+    tx.Abort()
+    log.Fatal(err)
+}
+
+// Set headers at any time before Commit
+tx.SetHeader("Content-Type", "text/plain")
+tx.SetHeaders(map[string]string{
+    "X-Custom-Source": "streaming-client",
+    "priority":        "3",
+})
+
+// Finalize the enqueue. This closes the data stream and makes the
+// message visible in the INCOMING state.
+id, err := tx.Commit()
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Message %s enqueued successfully\n", id)
+```
+
+If anything goes wrong during the process, calling `tx.Abort()` will clean up any partially written data and ensure the message never becomes visible in the queue.
 
 ### Context-based Header Backchannel
 

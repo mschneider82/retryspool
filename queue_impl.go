@@ -159,6 +159,156 @@ func (q *queueImpl) Enqueue(ctx context.Context, headers map[string]string, data
 	return id, nil
 }
 
+// BeginEnqueue starts a streaming enqueue transaction.
+func (q *queueImpl) BeginEnqueue(ctx context.Context) (EnqueueTransaction, error) {
+	// Use message ID from context if provided, otherwise generate a new one
+	id := MessageIDFromContext(ctx)
+	if id == "" {
+		id = q.generateMessageID()
+	}
+
+	dataWriter, err := q.storage.GetDataWriter(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get data writer: %w", err)
+	}
+
+	return &enqueueTransaction{
+		ctx:     ctx,
+		queue:   q,
+		id:      id,
+		headers: make(map[string]string),
+		writer:  dataWriter,
+	}, nil
+}
+
+type enqueueTransaction struct {
+	ctx       context.Context
+	queue     *queueImpl
+	id        string
+	headers   map[string]string
+	writer    io.WriteCloser
+	size      atomic.Int64
+	committed atomic.Bool
+	aborted   atomic.Bool
+	mu        sync.Mutex
+}
+
+func (t *enqueueTransaction) Write(p []byte) (n int, err error) {
+	if t.committed.Load() {
+		return 0, errors.New("transaction already committed")
+	}
+	if t.aborted.Load() {
+		return 0, errors.New("transaction already aborted")
+	}
+	n, err = t.writer.Write(p)
+	if n > 0 {
+		t.size.Add(int64(n))
+	}
+	return n, err
+}
+
+func (t *enqueueTransaction) MessageID() string {
+	return t.id
+}
+
+func (t *enqueueTransaction) SetHeader(key, value string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.headers[key] = value
+}
+
+func (t *enqueueTransaction) SetHeaders(headers map[string]string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for k, v := range headers {
+		t.headers[k] = v
+	}
+}
+
+func (t *enqueueTransaction) Commit() (string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.committed.Load() {
+		return t.id, nil
+	}
+	if t.aborted.Load() {
+		return "", errors.New("cannot commit aborted transaction")
+	}
+
+	// Close the data writer first to ensure all data is flushed and middleware is finished
+	if err := t.writer.Close(); err != nil {
+		return "", fmt.Errorf("failed to close data writer: %w", err)
+	}
+
+	// Resolve retry policy name from context or headers
+	policyName := RetryPolicyFromContext(t.ctx)
+	if policyName == "" {
+		policyName = t.headers["x-retry-policy"]
+	}
+
+	metadata := metastorage.MessageMetadata{
+		ID:              t.id,
+		State:           metastorage.StateIncoming,
+		Attempts:        0,
+		MaxAttempts:     t.queue.config.MaxAttempts,
+		NextRetry:       time.Now(),
+		Created:         time.Now(),
+		Updated:         time.Now(),
+		Priority:        t.queue.config.DefaultPriority,
+		Headers:         t.headers,
+		Size:            t.size.Load(),
+		RetryPolicyName: policyName,
+	}
+
+	// Set priority from headers if specified
+	if priority := t.headers["priority"]; priority != "" {
+		switch priority {
+		case "1":
+			metadata.Priority = 1
+		case "2":
+			metadata.Priority = 2
+		case "3":
+			metadata.Priority = 3
+		case "4":
+			metadata.Priority = 4
+		case "5":
+			metadata.Priority = 5
+		}
+	}
+
+	// Store metadata
+	if err := t.queue.storage.StoreMeta(t.ctx, t.id, metadata); err != nil {
+		return "", fmt.Errorf("failed to store metadata: %w", err)
+	}
+
+	t.committed.Store(true)
+
+	t.queue.config.Logger.Info("Message enqueued via transaction", "message_id", t.id, "state", "incoming")
+
+	// Trigger immediate scheduling (unless disabled)
+	if t.queue.scheduler != nil && t.queue.running.Load() && !t.queue.config.DisableImmediateTrigger {
+		t.queue.scheduler.TriggerImmediate()
+	}
+
+	return t.id, nil
+}
+
+func (t *enqueueTransaction) Abort() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.committed.Load() || t.aborted.Load() {
+		return nil
+	}
+
+	t.aborted.Store(true)
+	t.writer.Close()
+
+	// Clean up data
+	return t.queue.storage.DeleteMessage(t.ctx, t.id)
+}
+
 // GetMessage retrieves message metadata and data reader
 func (q *queueImpl) GetMessage(ctx context.Context, id string) (Message, MessageReader, error) {
 	metadata, err := q.storage.GetMessageMetadata(ctx, id)
@@ -430,6 +580,9 @@ func (q *queueImpl) ProcessMessage(ctx context.Context, id string, handler Handl
 
 	// Success
 	q.config.Logger.Info("Message processed successfully", "message_id", id)
+
+	// Clear last error on successful delivery
+	message.Metadata.LastError = ""
 
 	// Merge handler-provided headers into metadata
 	if len(collectedHeaders) > 0 {

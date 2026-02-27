@@ -2,6 +2,7 @@ package retryspool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -162,6 +163,51 @@ func (c *combinedStorage) StoreMessage(ctx context.Context, messageID string, he
 	return nil
 }
 
+// StoreMeta stores message metadata
+func (c *combinedStorage) StoreMeta(ctx context.Context, messageID string, metadata metastorage.MessageMetadata) error {
+	return c.metaStorage.StoreMeta(ctx, messageID, metadata)
+}
+
+// GetDataWriter returns a writer for message data, wrapped with middleware
+func (c *combinedStorage) GetDataWriter(ctx context.Context, messageID string) (io.WriteCloser, error) {
+	writer, err := c.dataStorage.GetDataWriter(ctx, messageID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap writer with middleware for encoding if configured
+	if len(c.dataMiddlewares) > 0 {
+		wrappedWriter := c.wrapWriterWithMiddlewares(writer, c.dataMiddlewares)
+		// We need to return a WriteCloser, so we wrap it
+		return &middlewareWriteCloser{writer: wrappedWriter, originalCloser: writer}, nil
+	}
+
+	return writer, nil
+}
+
+// middlewareWriteCloser wraps a writerWithClosers with the original data storage WriteCloser
+type middlewareWriteCloser struct {
+	writer         *writerWithClosers
+	originalCloser io.WriteCloser
+}
+
+func (m *middlewareWriteCloser) Write(p []byte) (n int, err error) {
+	return m.writer.Write(p)
+}
+
+func (m *middlewareWriteCloser) Close() error {
+	// Close middleware chain first (outermost to innermost)
+	middlewareErr := m.writer.Close()
+
+	// Then close the original data storage writer
+	originalErr := m.originalCloser.Close()
+
+	if middlewareErr != nil {
+		return middlewareErr
+	}
+	return originalErr
+}
+
 // GetMessage retrieves both message data and metadata
 func (c *combinedStorage) GetMessage(ctx context.Context, messageID string) (metastorage.MessageMetadata, io.ReadCloser, error) {
 	// Get metadata first
@@ -223,13 +269,13 @@ func (c *combinedStorage) MoveToState(ctx context.Context, messageID string, fro
 func (c *combinedStorage) DeleteMessage(ctx context.Context, messageID string) error {
 	// Delete data first
 	err := c.dataStorage.DeleteData(ctx, messageID)
-	if err != nil && !strings.Contains(err.Error(), "not found") {
+	if err != nil && !errors.Is(err, datastorage.ErrDataNotFound) && !strings.Contains(err.Error(), "not found") {
 		return fmt.Errorf("failed to delete message data: %w", err)
 	}
 
 	// Delete metadata last
 	err = c.metaStorage.DeleteMeta(ctx, messageID)
-	if err != nil && err != metastorage.ErrMessageNotFound {
+	if err != nil && !errors.Is(err, metastorage.ErrMessageNotFound) {
 		return fmt.Errorf("failed to delete message metadata: %w", err)
 	}
 
