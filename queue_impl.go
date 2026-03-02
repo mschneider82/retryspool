@@ -393,7 +393,7 @@ func (q *queueImpl) GetMessagesInState(ctx context.Context, state QueueState) ([
 		metadata, hasMore, err := iterator.Next(ctx)
 		if err != nil {
 			q.config.Logger.Warn("Failed to get next message from iterator", "error", err)
-			continue
+			break // Don't continue on error - prevents infinite loop when backend is unavailable
 		}
 
 		// Check if iterator is exhausted (empty message ID indicates end)
@@ -467,7 +467,7 @@ func (q *queueImpl) GetStateCount(ctx context.Context, state QueueState) (int64,
 		metadata, hasMore, err := iterator.Next(ctx)
 		if err != nil {
 			q.config.Logger.Warn("Error during message counting", "error", err)
-			continue
+			break // Don't continue on error - prevents infinite loop when backend is unavailable
 		}
 
 		// Check if iterator is exhausted (empty message ID indicates end)

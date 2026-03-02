@@ -313,7 +313,7 @@ func (s *messageScheduler) scheduleReadyDeferred(ctx context.Context, maxCount i
 		metadata, _, err := iterator.Next(ctx)
 		if err != nil {
 			s.logger.Error("Error getting next deferred message", "error", err)
-			continue
+			break
 		}
 
 		// Check if iterator is exhausted (empty message ID indicates end)
@@ -425,7 +425,7 @@ func (s *messageScheduler) scheduleIncoming(ctx context.Context, maxCount int) i
 		metadata, _, err := iterator.Next(ctx)
 		if err != nil {
 			s.logger.Error("Error getting next incoming message", "error", err)
-			continue
+			break
 		}
 
 		// Check if iterator is exhausted (empty message ID indicates end)
@@ -540,7 +540,7 @@ func (s *messageScheduler) scheduleBounce(ctx context.Context, maxCount int) int
 		metadata, _, err := iterator.Next(ctx)
 		if err != nil {
 			s.logger.Error("Error getting next bounce message", "error", err)
-			continue
+			break
 		}
 
 		// Check if iterator is exhausted (empty message ID indicates end)
